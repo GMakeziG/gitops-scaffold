@@ -1,0 +1,131 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gitops-scaffold"
+version = "0.1.0"
+description = "An extensible GitOps scaffolding platform that analyzes application definitions and generates production-ready, opinionated Kubernetes manifests for FluxCD + Kustomize."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+authors = [
+    { name = "Gerso Robayo-Guillen", email = "06ninjatronics@gmail.com" },
+]
+keywords = [
+    "gitops",
+    "kubernetes",
+    "kustomize",
+    "fluxcd",
+    "docker-compose",
+    "scaffolding",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
+dependencies = [
+    "typer>=0.15",
+    "rich>=13.9",
+    "pydantic>=2.9",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/06ninjatronics/gitops-scaffold"
+Repository = "https://github.com/06ninjatronics/gitops-scaffold"
+Issues = "https://github.com/06ninjatronics/gitops-scaffold/issues"
+Documentation = "https://github.com/06ninjatronics/gitops-scaffold/tree/main/docs"
+
+[project.scripts]
+gitops-scaffold = "gitops_scaffold.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8",
+    "ty>=0.0.1a1",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "types-PyYAML>=6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gitops_scaffold"]
+
+# ---------------------------------------------------------------------------
+# Ruff: linting + formatting
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "PT",   # flake8-pytest-style
+    "N",    # pep8-naming
+    "A",    # flake8-builtins
+    "T20",  # flake8-print (no stray print(); use Rich console)
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501", # line length is enforced by the formatter, not the linter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["T20"]
+"src/gitops_scaffold/cli.py" = ["B008"] # typer.Argument()/Option() in defaults is the idiomatic pattern
+
+[tool.ruff.lint.isort]
+known-first-party = ["gitops_scaffold"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# ty: static type checking (astral-sh/ty)
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+python-version = "3.13"
+root = ["src"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+exclude = ["examples"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["src/gitops_scaffold"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

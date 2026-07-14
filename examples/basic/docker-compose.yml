@@ -1,0 +1,17 @@
+# A minimal example fixture for gitops-scaffold's v0.2 Compose parser.
+# Deliberately includes a mix of the concerns the analyzer will need to
+# reason about: an exposed port, a secret-looking env var, a plain config
+# env var, a named (persistent) volume, and no declared health check.
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    environment:
+      APP_ENV: production
+      API_TOKEN: "changeme"
+    volumes:
+      - web-data:/usr/share/nginx/html
+
+volumes:
+  web-data: {}
