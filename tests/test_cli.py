@@ -17,16 +17,6 @@ def test_version_flag_prints_version_and_exits_zero() -> None:
     assert __version__ in result.output
 
 
-def test_analyze_reports_not_yet_implemented(tmp_path: Path) -> None:
-    compose_file = tmp_path / "docker-compose.yml"
-    compose_file.write_text("services: {}\n")
-
-    result = runner.invoke(app, ["analyze", str(compose_file)])
-
-    assert result.exit_code == 1
-    assert "not yet implemented" in result.output
-
-
 def test_generate_reports_not_yet_implemented(tmp_path: Path) -> None:
     compose_file = tmp_path / "docker-compose.yml"
     compose_file.write_text("services: {}\n")

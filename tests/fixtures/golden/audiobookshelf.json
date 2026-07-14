@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "application": {
+    "name": "audiobookshelf-compose",
+    "services": [
+      {
+        "name": "audiobookshelf",
+        "image": "ghcr.io/advplyr/audiobookshelf:v2.35.1",
+        "command": null,
+        "entrypoint": null,
+        "ports": [
+          {
+            "container_port": 80,
+            "host_port": 13378,
+            "protocol": "TCP",
+            "name": null
+          }
+        ],
+        "environment": [
+          {
+            "name": "TZ",
+            "value": "America/New_York"
+          }
+        ],
+        "env_files": [],
+        "volumes": [
+          {
+            "source": "./audiobooks",
+            "target": "/audiobooks",
+            "read_only": false,
+            "is_named_volume": false,
+            "mount_type": "bind"
+          },
+          {
+            "source": "./podcasts",
+            "target": "/podcasts",
+            "read_only": false,
+            "is_named_volume": false,
+            "mount_type": "bind"
+          },
+          {
+            "source": "./config",
+            "target": "/config",
+            "read_only": false,
+            "is_named_volume": false,
+            "mount_type": "bind"
+          },
+          {
+            "source": "./metadata",
+            "target": "/metadata",
+            "read_only": false,
+            "is_named_volume": false,
+            "mount_type": "bind"
+          }
+        ],
+        "health_check": null,
+        "runtime_user": null,
+        "depends_on": [],
+        "restart_policy": "unless-stopped",
+        "labels": {},
+        "network_aliases": [],
+        "privileged": false,
+        "network_mode": null,
+        "resources": null,
+        "unsupported_fields": [
+          "services.audiobookshelf.container_name"
+        ]
+      }
+    ],
+    "source_format": "docker-compose",
+    "source_path": "audiobookshelf-compose.yml",
+    "unsupported_fields": []
+  },
+  "analysis": {
+    "application_name": "audiobookshelf-compose",
+    "findings": [
+      {
+        "code": "configmap-value-detected",
+        "message": "Service 'audiobookshelf' config value detected: TZ=America/New_York",
+        "severity": "info",
+        "service_name": "audiobookshelf",
+        "field_path": "environment.TZ",
+        "remediation": null
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './audiobooks' to '/audiobooks' \u2014 host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[0]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './podcasts' to '/podcasts' \u2014 host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[1]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './config' to '/config' \u2014 host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[2]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './metadata' to '/metadata' \u2014 host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[3]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "health-check-missing",
+        "message": "Service 'audiobookshelf' declares no health check.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "healthcheck",
+        "remediation": "Add a healthcheck so readiness/liveness probes can be generated automatically."
+      },
+      {
+        "code": "runtime-user-unspecified",
+        "message": "Service 'audiobookshelf' declares no user \u2014 it will run as the image's default user (often root).",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "user",
+        "remediation": "Set an explicit non-root user."
+      },
+      {
+        "code": "image-tag-pinned",
+        "message": "Service 'audiobookshelf' image detected: ghcr.io/advplyr/audiobookshelf:v2.35.1",
+        "severity": "info",
+        "service_name": "audiobookshelf",
+        "field_path": "image",
+        "remediation": null
+      },
+      {
+        "code": "compose-unsupported-field",
+        "message": "Compose field 'services.audiobookshelf.container_name' was read but is not yet modeled by gitops-scaffold.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "services.audiobookshelf.container_name",
+        "remediation": "Review this field manually \u2014 it will not influence generated manifests."
+      }
+    ],
+    "confidence": 0.6499999999999999,
+    "detected_ports": true,
+    "detected_volumes": true,
+    "detected_secrets": false,
+    "detected_health_checks": false,
+    "detected_runtime_user": false
+  }
+}

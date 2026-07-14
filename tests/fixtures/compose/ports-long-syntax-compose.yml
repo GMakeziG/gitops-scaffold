@@ -1,0 +1,11 @@
+services:
+  app:
+    image: myorg/app:1.0.0
+    ports:
+      - target: 80
+        published: 8080
+        protocol: tcp
+        mode: ingress
+      - target: 90
+        published: "9000-9010"
+        protocol: tcp

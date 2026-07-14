@@ -26,7 +26,10 @@ class Finding(BaseModel):
 
     ``code`` is a stable, greppable identifier (e.g. ``"health-check-missing"``)
     so findings can be filtered, tested against, and documented independently
-    of their human-readable ``message``.
+    of their human-readable ``message``. ``field_path`` is a dotted path
+    relative to ``service_name`` (e.g. ``"environment.API_TOKEN"``,
+    ``"ports[0]"``) pointing back to exactly what was observed, when the
+    finding is about a specific field rather than the service as a whole.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -35,6 +38,7 @@ class Finding(BaseModel):
     message: str
     severity: Severity
     service_name: str | None = None
+    field_path: str | None = None
     remediation: str | None = None
 
 

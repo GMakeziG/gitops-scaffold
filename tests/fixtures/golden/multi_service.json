@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "application": {
+    "name": "multi-service-compose",
+    "services": [
+      {
+        "name": "web",
+        "image": "myorg/web:2.3.1",
+        "command": null,
+        "entrypoint": null,
+        "ports": [
+          {
+            "container_port": 8080,
+            "host_port": 8080,
+            "protocol": "TCP",
+            "name": null
+          }
+        ],
+        "environment": [
+          {
+            "name": "DATABASE_URL",
+            "value": "postgres://db:5432/app"
+          }
+        ],
+        "env_files": [],
+        "volumes": [],
+        "health_check": null,
+        "runtime_user": null,
+        "depends_on": [
+          "db",
+          "redis"
+        ],
+        "restart_policy": null,
+        "labels": {},
+        "network_aliases": [],
+        "privileged": false,
+        "network_mode": null,
+        "resources": null,
+        "unsupported_fields": [
+          "depends_on.db.condition",
+          "depends_on.redis.condition"
+        ]
+      },
+      {
+        "name": "db",
+        "image": "postgres:16.2",
+        "command": null,
+        "entrypoint": null,
+        "ports": [],
+        "environment": [
+          {
+            "name": "POSTGRES_PASSWORD",
+            "value": "hunter2literalsecret"
+          },
+          {
+            "name": "POSTGRES_DB",
+            "value": "app"
+          }
+        ],
+        "env_files": [],
+        "volumes": [
+          {
+            "source": "db-data",
+            "target": "/var/lib/postgresql/data",
+            "read_only": false,
+            "is_named_volume": true,
+            "mount_type": "volume"
+          }
+        ],
+        "health_check": null,
+        "runtime_user": null,
+        "depends_on": [],
+        "restart_policy": null,
+        "labels": {},
+        "network_aliases": [],
+        "privileged": false,
+        "network_mode": null,
+        "resources": null,
+        "unsupported_fields": []
+      },
+      {
+        "name": "redis",
+        "image": "redis:7.2",
+        "command": null,
+        "entrypoint": null,
+        "ports": [],
+        "environment": [],
+        "env_files": [],
+        "volumes": [],
+        "health_check": null,
+        "runtime_user": null,
+        "depends_on": [],
+        "restart_policy": null,
+        "labels": {},
+        "network_aliases": [],
+        "privileged": false,
+        "network_mode": null,
+        "resources": null,
+        "unsupported_fields": []
+      }
+    ],
+    "source_format": "docker-compose",
+    "source_path": "multi-service-compose.yml",
+    "unsupported_fields": []
+  },
+  "analysis": {
+    "application_name": "multi-service-compose",
+    "findings": [
+      {
+        "code": "configmap-value-detected",
+        "message": "Service 'web' config value detected: DATABASE_URL=postgres://db:5432/app",
+        "severity": "info",
+        "service_name": "web",
+        "field_path": "environment.DATABASE_URL",
+        "remediation": null
+      },
+      {
+        "code": "health-check-missing",
+        "message": "Service 'web' declares no health check.",
+        "severity": "warning",
+        "service_name": "web",
+        "field_path": "healthcheck",
+        "remediation": "Add a healthcheck so readiness/liveness probes can be generated automatically."
+      },
+      {
+        "code": "runtime-user-unspecified",
+        "message": "Service 'web' declares no user \u2014 it will run as the image's default user (often root).",
+        "severity": "warning",
+        "service_name": "web",
+        "field_path": "user",
+        "remediation": "Set an explicit non-root user."
+      },
+      {
+        "code": "image-tag-pinned",
+        "message": "Service 'web' image detected: myorg/web:2.3.1",
+        "severity": "info",
+        "service_name": "web",
+        "field_path": "image",
+        "remediation": null
+      },
+      {
+        "code": "compose-unsupported-field",
+        "message": "Compose field 'depends_on.db.condition' was read but is not yet modeled by gitops-scaffold.",
+        "severity": "warning",
+        "service_name": "web",
+        "field_path": "depends_on.db.condition",
+        "remediation": "Review this field manually \u2014 it will not influence generated manifests."
+      },
+      {
+        "code": "compose-unsupported-field",
+        "message": "Compose field 'depends_on.redis.condition' was read but is not yet modeled by gitops-scaffold.",
+        "severity": "warning",
+        "service_name": "web",
+        "field_path": "depends_on.redis.condition",
+        "remediation": "Review this field manually \u2014 it will not influence generated manifests."
+      },
+      {
+        "code": "secret-literal-value",
+        "message": "Service 'db' declares 'POSTGRES_PASSWORD' with a literal value committed to the compose file. Never commit secret values to source control.",
+        "severity": "critical",
+        "service_name": "db",
+        "field_path": "environment.POSTGRES_PASSWORD",
+        "remediation": "Remove the literal value and supply it via a secret manager (never a plaintext Kubernetes Secret either)."
+      },
+      {
+        "code": "configmap-value-detected",
+        "message": "Service 'db' config value detected: POSTGRES_DB=app",
+        "severity": "info",
+        "service_name": "db",
+        "field_path": "environment.POSTGRES_DB",
+        "remediation": null
+      },
+      {
+        "code": "volume-named",
+        "message": "Service 'db' mounts named volume 'db-data' at '/var/lib/postgresql/data' \u2014 will require a PersistentVolumeClaim.",
+        "severity": "info",
+        "service_name": "db",
+        "field_path": "volumes[0]",
+        "remediation": null
+      },
+      {
+        "code": "health-check-missing",
+        "message": "Service 'db' declares no health check.",
+        "severity": "warning",
+        "service_name": "db",
+        "field_path": "healthcheck",
+        "remediation": "Add a healthcheck so readiness/liveness probes can be generated automatically."
+      },
+      {
+        "code": "runtime-user-unspecified",
+        "message": "Service 'db' declares no user \u2014 it will run as the image's default user (often root).",
+        "severity": "warning",
+        "service_name": "db",
+        "field_path": "user",
+        "remediation": "Set an explicit non-root user."
+      },
+      {
+        "code": "persistence-storage-size-unknown",
+        "message": "Service 'db' needs persistent storage for '/var/lib/postgresql/data' \u2014 Compose doesn't declare a size, so a generated PVC will need review.",
+        "severity": "warning",
+        "service_name": "db",
+        "field_path": "volumes[0]",
+        "remediation": "Set an explicit storage size when generating the PVC."
+      },
+      {
+        "code": "image-tag-pinned",
+        "message": "Service 'db' image detected: postgres:16.2",
+        "severity": "info",
+        "service_name": "db",
+        "field_path": "image",
+        "remediation": null
+      },
+      {
+        "code": "health-check-missing",
+        "message": "Service 'redis' declares no health check.",
+        "severity": "warning",
+        "service_name": "redis",
+        "field_path": "healthcheck",
+        "remediation": "Add a healthcheck so readiness/liveness probes can be generated automatically."
+      },
+      {
+        "code": "runtime-user-unspecified",
+        "message": "Service 'redis' declares no user \u2014 it will run as the image's default user (often root).",
+        "severity": "warning",
+        "service_name": "redis",
+        "field_path": "user",
+        "remediation": "Set an explicit non-root user."
+      },
+      {
+        "code": "image-tag-pinned",
+        "message": "Service 'redis' image detected: redis:7.2",
+        "severity": "info",
+        "service_name": "redis",
+        "field_path": "image",
+        "remediation": null
+      }
+    ],
+    "confidence": 0.7999999999999999,
+    "detected_ports": true,
+    "detected_volumes": true,
+    "detected_secrets": true,
+    "detected_health_checks": false,
+    "detected_runtime_user": false
+  }
+}

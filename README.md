@@ -9,9 +9,9 @@ opinionated GitOps manifests for FluxCD + Kustomize. Where it isn't
 confident, it says so — in the report and in the generated files — instead
 of quietly guessing.
 
-> **Status:** early alpha (v0.1). This milestone is project scaffolding only:
-> package layout, interfaces, and tooling. Docker Compose parsing itself
-> lands in v0.2. See [`docs/roadmap.md`](docs/roadmap.md).
+> **Status:** early alpha (v0.2). `analyze` works end-to-end against Docker
+> Compose files today; manifest generation (`generate`) is still a stub —
+> see [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Why not just convert Compose to YAML?
 
@@ -38,15 +38,31 @@ invents an answer anyway, and that answer ends up in production.
 
 ## Example report
 
-```
-✔ Image detected
-✔ Ports detected
-✔ Volumes detected
-⚠ Health endpoint unknown
-⚠ UID/GID unknown
-⚠ Storage size requires review
+Real output for a public [Audiobookshelf](https://github.com/advplyr/audiobookshelf)
+`docker-compose.yml` (bind mounts, no healthcheck, no declared user):
 
-Confidence: 87%
+```sh
+$ gitops-scaffold analyze docker-compose.yml
+```
+
+```
+╭─────────────── gitops-scaffold report: audiobookshelf-compose ───────────────╮
+│ Service: audiobookshelf                                                      │
+│   Image: ghcr.io/advplyr/audiobookshelf:v2.35.1                              │
+│   Ports: 13378->80/TCP                                                       │
+│   Environment: TZ=America/New_York                                          │
+│   Volumes: ./audiobooks->/audiobooks, ./podcasts->/podcasts, ...            │
+│   Health check: none                                                        │
+│   Runtime user: unspecified                                                 │
+│                                                                              │
+│ ✔ Service 'audiobookshelf' image detected: ghcr.io/.../audiobookshelf:v2.35.1│
+│ ⚠ bind-mounts host path './audiobooks' — host paths don't translate to K8s. │
+│ ⚠ Service 'audiobookshelf' declares no health check.                        │
+│ ⚠ Service 'audiobookshelf' declares no user — runs as the image's default.  │
+│ ⚠ Compose field 'container_name' was read but is not yet modeled.           │
+│                                                                              │
+│ Confidence: 65%                                                              │
+╰────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## Installation
@@ -61,14 +77,28 @@ pip install gitops-scaffold   # not yet published — see Development below
 
 ```sh
 gitops-scaffold analyze docker-compose.yml
-gitops-scaffold generate docker-compose.yml --output ./gitops
+gitops-scaffold analyze docker-compose.yml --format json
+gitops-scaffold analyze docker-compose.yml --output report.json
+gitops-scaffold generate docker-compose.yml --output ./gitops   # v0.3, still stubbed
 gitops-scaffold validate ./gitops
 ```
 
-`analyze` and `generate` currently exit with a "not yet implemented" message
-— Compose parsing is the v0.2 milestone. `validate` is fully functional
-today: it checks that a generated output directory has the expected files
-and no unresolved review markers.
+`analyze` works end-to-end today: `--format table` (default) prints the
+report above; `--format json` prints the same analysis as a stable,
+machine-readable `AnalysisReport` envelope; `--output PATH` additionally
+saves that JSON to disk regardless of `--format` — the schema `generate` is
+expected to accept as cached input once v0.3 lands. Exit codes: `0` if
+analysis completed with only informational/warning findings, `1` if the
+input couldn't be parsed at all, `2` if it completed but found at least one
+CRITICAL finding (a hardcoded secret, `privileged: true`, etc.).
+
+`generate` is still a stub for v0.3. `validate` is fully functional today: it
+checks that a generated output directory has the expected files and no
+unresolved review markers.
+
+See [`docs/compose-support.md`](docs/compose-support.md) for exactly which
+Compose fields are understood, how ambiguous values are classified, and
+current limitations.
 
 ## What gets generated
 

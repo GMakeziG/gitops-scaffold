@@ -1,0 +1,6 @@
+services:
+  app:
+    image: myorg/app:1.2.3
+    volumes:
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro

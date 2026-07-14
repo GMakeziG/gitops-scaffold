@@ -39,29 +39,54 @@ touching the rest of the system.
 
 `gitops_scaffold.models.app.ApplicationDefinition` (and its nested
 `ServiceDefinition`, `PortMapping`, `EnvVar`, `VolumeMount`, `HealthCheck`,
-`RuntimeUser`) is the single normalized shape every parser must produce.
-Analyzers, generators, and validators never know or care whether the original
-input was Docker Compose, a Helm chart, or a Dockerfile — they only see this
-IR. This is what makes "future support for Helm, OCI images, Dockerfiles, and
-GitHub repositories" (see `docs/roadmap.md`) an additive change rather than a
-rewrite: a new parser just needs to produce an `ApplicationDefinition`.
+`RuntimeUser`, `ResourceRequirements`) is the single normalized shape every
+parser must produce. Analyzers, generators, and validators never know or
+care whether the original input was Docker Compose, a Helm chart, or a
+Dockerfile — they only see this IR. This is what makes "future support for
+Helm, OCI images, Dockerfiles, and GitHub repositories" (see
+`docs/roadmap.md`) an additive change rather than a rewrite: a new parser
+just needs to produce an `ApplicationDefinition`.
+
+Anything a parser reads but doesn't model becomes a dotted-path string in
+`unsupported_fields` (on both `ServiceDefinition` and `ApplicationDefinition`)
+rather than being silently dropped — see `docs/compose-support.md` for the
+full policy and field table. `Finding.field_path` closes the loop: it points
+back to the exact dotted path a finding is about (e.g.
+`environment.API_TOKEN`, `ports[0]`), relative to `Finding.service_name`.
 
 ## Parsers (`gitops_scaffold.parsers`)
 
 A `Parser` implements `can_parse(path) -> bool` (used for auto-detection) and
 `parse(path) -> ApplicationDefinition`. Parsers must never guess: if a value
 can't be determined from the input, it's left `None`/empty rather than
-defaulted, so the analyzer can surface the gap explicitly.
+defaulted, so the analyzer can surface the gap explicitly. Parsers only ever
+answer "what does this file structurally declare?" — value judgments belong
+entirely to the analyzer, never the parser.
+
+`gitops_scaffold.parsers.registry.detect_parser(path)` tries every registered
+`Parser` (`PARSERS`) in order and returns the first match, raising
+`ParserError` if none apply. `ComposeParser` is the only fully implemented
+parser as of v0.2; `DockerfileParser`, `HelmParser`, `KubernetesParser`, and
+`GitHubRepositoryParser` are scaffolding placeholders (real `can_parse`,
+`parse` raises `NotImplementedError`) so adding a real implementation later
+never requires touching the CLI — only the registry and the new module.
 
 ## Analyzer (`gitops_scaffold.analyzer`)
 
-An `Analyzer` runs a set of narrowly-scoped `DetectionRule` implementations
-(`analyzer/rules/`) — one per concern (ports, secrets, ConfigMap values,
-volumes, health checks, runtime user, security risks, persistence) — over
-each service, and aggregates their `Finding`s plus an overall confidence
-score into an `AnalysisResult`. Each rule is a pure function of one
-`ServiceDefinition`, with no shared state, which keeps them trivial to unit
-test independently.
+`DefaultAnalyzer` runs a set of narrowly-scoped `DetectionRule`
+implementations (`analyzer/rules/`) — one per concern (ports, secrets,
+ConfigMap values, volumes, health checks, runtime user, security risks,
+persistence, image tag hygiene) — over each service, and aggregates their
+`Finding`s plus an overall confidence score into an `AnalysisResult`. Each
+rule is a pure function of one `ServiceDefinition`, with no shared state,
+which keeps them trivial to unit test independently.
+
+Checks that need to see the *whole* application rather than one service
+(cross-service host-port collisions, "no services defined") live directly in
+`DefaultAnalyzer`, not in a `DetectionRule` — the rule interface stays
+single-service-scoped on purpose. `DefaultAnalyzer` also converts
+`unsupported_fields` into WARNING findings and computes confidence via
+`analyzer/scoring.py` (see `docs/compose-support.md` for the exact formula).
 
 This is the layer that enforces the project's core promise: **the tool never
 silently guesses.** Anything a rule can't determine confidently becomes a
@@ -93,10 +118,18 @@ output is plain Kubernetes manifests laid out for FluxCD + Kustomize.
 
 ## Reporting (`gitops_scaffold.reporting`)
 
-`Reporter` renders an `AnalysisResult` as a Rich console report: one line per
-finding (✔ / ⚠ / ✖ by severity) plus an overall confidence percentage. It has
-no knowledge of any specific input format — it just renders whatever
-`AnalysisResult` it's given, so it needed no changes as analyzers evolve.
+`Reporter.render(app, result)` prints an inventory (services, images, ports,
+environment variables, volumes, health checks, runtime user, dependencies) —
+read directly from the `ApplicationDefinition` IR, since `AnalysisResult`
+only ever holds findings and a confidence score by design — followed by one
+line per finding (✔ / ⚠ / ✖ by severity) and the overall confidence
+percentage. Environment variable values are redacted using
+`analyzer.rules.secrets.looks_like_secret`, the same predicate the secret
+rule itself uses, so the report can never print a value the analyzer
+considers secret-shaped. `reporting.report.redact_application` applies the
+same redaction to the `--format json` / `--output` JSON envelope — the
+analysis itself always runs against the real, unredacted values (it has to,
+to classify them); only output is ever redacted.
 
 ## Validators (`gitops_scaffold.validators`)
 
@@ -119,3 +152,10 @@ A thin Typer layer wiring the stages above to three commands: `analyze`,
 `generate`, and `validate`. The CLI itself contains no business logic — it
 only orchestrates parser → analyzer → reporter/generator → validator calls
 and renders their results.
+
+`analyze` exit codes: **1** means the input couldn't be parsed at all (bad
+path, unrecognized format, malformed Compose — a `ParserError`); **2** means
+analysis completed but found at least one CRITICAL finding; **0** means
+analysis completed with only INFO/WARNING findings (or none). `--output PATH`
+writes the full `AnalysisReport` as JSON regardless of `--format` — the same
+schema `generate` is expected to accept as cached input in v0.3.

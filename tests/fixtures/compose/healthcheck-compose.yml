@@ -1,0 +1,14 @@
+services:
+  web:
+    image: myorg/web:1.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 1m
+      retries: 3
+
+  worker:
+    image: myorg/worker:1.0.0
+    healthcheck:
+      test: ["NONE"]

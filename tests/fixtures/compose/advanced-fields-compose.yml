@@ -1,0 +1,36 @@
+services:
+  app:
+    image: myorg/app:1.0.0
+    command: bundle exec thin -p 3000
+    entrypoint: ["/entrypoint.sh", "--flag"]
+    env_file: .env
+    labels:
+      com.example.team: platform
+      com.example.tier: backend
+    networks:
+      default:
+        aliases:
+          - app-internal
+          - app.local
+        ipv4_address: 10.0.0.5
+    deploy:
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 100
+      replicas: 2
+
+  worker:
+    image: myorg/worker:1.0.0
+    command: ["python", "worker.py"]
+    labels:
+      - "com.example.team=platform"
+    volumes:
+      - type: tmpfs
+        target: /tmp/scratch
+      - type: volume
+        target: /data

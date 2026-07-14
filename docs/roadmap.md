@@ -21,19 +21,36 @@ real-world usage surfaces gaps the design didn't anticipate.
 - **No Docker Compose parsing yet** — `analyze` and `generate` exit
   non-zero with a clear "not yet implemented" message.
 
-## v0.2 — Docker Compose parsing + basic analysis
+## v0.2 — Docker Compose parsing + basic analysis (done)
 
-- Implement `ComposeParser`: services, images, ports, environment variables,
-  volumes, `depends_on`, restart policy.
-- Implement the first detection rules: ports, ConfigMap-eligible env vars,
-  secret-like env vars, volume mounts.
-- `analyze` produces a real confidence report end-to-end.
+- [x] `ComposeParser`: services, image, command, entrypoint, environment
+      (map + list), ports (short + long), volumes (short + long), user,
+      healthcheck, depends_on, restart, `deploy.resources`, labels, network
+      aliases — see `docs/compose-support.md` for the exact field table.
+- [x] All 8 originally-planned detection rules, plus a 9th (`image.py`, image
+      reference hygiene — see `docs/compose-support.md`).
+- [x] Deterministic, explainable confidence scoring (`analyzer/scoring.py`).
+- [x] `analyze` produces a real confidence report end-to-end, with
+      `--format table|json`, `--output PATH` (the JSON envelope `generate`
+      will accept in v0.3), and a 0/1/2 exit-code convention.
+- [x] Parser plugin architecture: `Parser` subclass stubs for Dockerfile,
+      Helm, Kubernetes, and GitHub-repository input, plus a
+      `parsers/registry.py` dispatcher — adding a real one later never
+      touches the CLI.
+- [x] Golden-file + unit tests for the parser, all 9 rules, confidence
+      scoring, and the CLI (including exit codes and secret redaction).
+- Deferred to later milestones: `build:`-context support, port
+  ranges, OCI image introspection for UID/tag inference (v0.6), YAML
+  line-number provenance.
 
 ## v0.3 — Manifest generation
 
 - Implement all nine generators (Deployment, Service, ConfigMap, PVC,
   secret.example, Ingress, Kustomization, README, validation checklist)
   against the templates scaffolded in v0.1.
+- `generate` accepts either a Compose file or a previously saved
+  `AnalysisReport` JSON (produced by `analyze --output`, see
+  `models/report.py`) as input, skipping re-parsing in the latter case.
 - `generate` writes a complete, review-ready output directory.
 - Golden-file tests: generated output for a set of example Compose files is
   checked into `tests/fixtures/` and diffed on every run.

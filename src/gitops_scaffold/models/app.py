@@ -4,6 +4,14 @@ This is the normalized model that every parser must produce and every
 analyzer, generator, and validator consumes. Keeping this model free of any
 Docker-Compose-specific (or Helm-specific, etc.) concepts is what lets new
 input formats be added later without touching analyzers or generators.
+
+Fields here only ever hold what a parser could directly observe. Value
+judgments ("this is a security risk", "this tag is bad practice") never live
+here — they belong to ``analyzer/rules/*.py``, which turns observations into
+:class:`~gitops_scaffold.models.analysis.Finding`\\ s. ``unsupported_fields``
+on :class:`ServiceDefinition` and :class:`ApplicationDefinition` records
+dotted paths (e.g. ``"services.web.cap_add"``) for anything a parser saw but
+doesn't model, so nothing is silently dropped — see ``docs/compose-support.md``.
 """
 
 from __future__ import annotations
@@ -34,47 +42,87 @@ class PortMapping(BaseModel):
 class EnvVar(BaseModel):
     """A single environment variable declared on a service.
 
-    ``is_secret`` is a hint set by the analyzer's secret-detection rules
-    (see ``analyzer/rules/secrets.py``), not by the parser. Parsers should
-    always leave it at the default and let the analyzer decide.
+    ``value`` preserves exactly what was written (or ``None`` if the
+    variable was declared with no value at all — see
+    ``docs/compose-support.md`` for the four value states Compose allows).
+    Classifying a variable as secret-like is an analysis concern, not a
+    parsing one — see ``analyzer/rules/secrets.py``.
     """
 
     model_config = ConfigDict(frozen=True)
 
     name: str
     value: str | None = None
-    is_secret: bool = False
 
 
 class VolumeMount(BaseModel):
-    """A filesystem mount attached to a service."""
+    """A filesystem mount attached to a service.
+
+    ``mount_type`` is one of ``"bind"``, ``"volume"``, or ``"tmpfs"``.
+    An anonymous volume (``volumes: ["/data"]``, no name) is
+    ``mount_type == "volume"`` with ``source is None``; a named volume has
+    both set. ``is_named_volume`` is kept for convenience, derived as
+    ``mount_type == "volume" and source is not None``.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    source: str
+    source: str | None
     target: str
     read_only: bool = False
     is_named_volume: bool = False
+    mount_type: str | None = None
 
 
 class HealthCheck(BaseModel):
-    """A health check declared on a service, if any."""
+    """A health check declared on a service, if any.
+
+    ``disabled`` is set when Compose's ``test: ["NONE"]`` or
+    ``disable: true`` is used — a deliberate opt-out, distinct from a
+    service that simply declares no health check at all.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     test: tuple[str, ...] | str | None = None
     interval_seconds: int | None = None
     timeout_seconds: int | None = None
+    start_period_seconds: int | None = None
     retries: int | None = None
+    disabled: bool = False
 
 
 class RuntimeUser(BaseModel):
-    """The user/group a service's container runs as, if it can be determined."""
+    """The user/group a service's container runs as, if it can be determined.
+
+    ``uid``/``gid`` resolve independently: ``user: "1000:appgroup"`` yields
+    ``uid=1000, gid=None`` (the group name can't be resolved to a numeric
+    ID without inspecting the image). ``raw`` always preserves the original
+    declared string so nothing observed is silently dropped, even when
+    neither side resolves to a number (``user: appuser``).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     uid: int | None = None
     gid: int | None = None
+    raw: str | None = None
+
+
+class ResourceRequirements(BaseModel):
+    """Compute resource requests/limits declared under ``deploy.resources``.
+
+    Stored as the raw strings Compose uses (e.g. ``"0.50"``, ``"512M"``) —
+    converting to Kubernetes resource units is a generator (v0.3) concern,
+    not a parsing one.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    cpu_request: str | None = None
+    cpu_limit: str | None = None
+    memory_request: str | None = None
+    memory_limit: str | None = None
 
 
 class ServiceDefinition(BaseModel):
@@ -83,16 +131,23 @@ class ServiceDefinition(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
-    image: str
+    image: str | None = None
     command: tuple[str, ...] | None = None
+    entrypoint: tuple[str, ...] | None = None
     ports: tuple[PortMapping, ...] = Field(default_factory=tuple)
     environment: tuple[EnvVar, ...] = Field(default_factory=tuple)
+    env_files: tuple[str, ...] = Field(default_factory=tuple)
     volumes: tuple[VolumeMount, ...] = Field(default_factory=tuple)
     health_check: HealthCheck | None = None
     runtime_user: RuntimeUser | None = None
     depends_on: tuple[str, ...] = Field(default_factory=tuple)
     restart_policy: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
+    network_aliases: tuple[str, ...] = Field(default_factory=tuple)
+    privileged: bool = False
+    network_mode: str | None = None
+    resources: ResourceRequirements | None = None
+    unsupported_fields: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class ApplicationDefinition(BaseModel):
@@ -104,3 +159,4 @@ class ApplicationDefinition(BaseModel):
     services: tuple[ServiceDefinition, ...]
     source_format: str
     source_path: str | None = None
+    unsupported_fields: tuple[str, ...] = Field(default_factory=tuple)
