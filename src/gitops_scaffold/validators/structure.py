@@ -1,9 +1,11 @@
 """Validates the on-disk structure of a generated GitOps output directory.
 
-This is the one validator that is fully implemented in v0.1: it only checks
-that the expected files exist and that no generated manifest still contains
-an unresolved ``TODO`` / ``REVIEW REQUIRED`` marker — it does not (yet)
-validate Kubernetes API schema correctness.
+Checks that the always-required files exist and that no generated manifest
+still contains an unresolved ``TODO`` / ``REVIEW REQUIRED`` marker. Does
+**not** check semantic correctness (Service/Deployment/PVC cross-references,
+resource name validity, ...) — see
+:class:`~gitops_scaffold.validators.manifests.ManifestConsistencyValidator`
+for that.
 """
 
 from __future__ import annotations
@@ -13,14 +15,15 @@ from pathlib import Path
 from gitops_scaffold.models.analysis import Finding, Severity
 from gitops_scaffold.validators.base import Validator
 
-#: Files every generated output directory is expected to contain.
-#: ``secret.example.yaml`` is intentionally required: real secrets must never
-#: be generated, but a placeholder documenting expected keys always should be.
+#: Files every generated output directory is always expected to contain.
+#: ``secret.example.yaml`` is deliberately **not** here — it's conditional
+#: (only generated when secret-shaped variables were detected), so a
+#: validator with no other information shouldn't fail over something it
+#: can't know is required.
 EXPECTED_FILES: tuple[str, ...] = (
     "kustomization.yaml",
     "README.md",
-    "VALIDATION_CHECKLIST.md",
-    "secret.example.yaml",
+    "generation-report.json",
 )
 
 #: Substrings that indicate a manifest still needs human review before it's

@@ -16,7 +16,7 @@ from gitops_scaffold.config.settings import DEFAULT_SECRET_NAME_PATTERNS
 from gitops_scaffold.models.analysis import Finding, Severity
 from gitops_scaffold.models.app import ServiceDefinition
 
-_INTERPOLATION_PATTERN = re.compile(r"^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$")
+INTERPOLATION_PATTERN = re.compile(r"^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$")
 
 
 def looks_like_secret(name: str, patterns: tuple[str, ...] = DEFAULT_SECRET_NAME_PATTERNS) -> bool:
@@ -72,7 +72,7 @@ class SecretDetectionRule(DetectionRule):
                         remediation="Populate this value via a secret manager before deploying.",
                     )
                 )
-            elif _INTERPOLATION_PATTERN.match(var.value):
+            elif INTERPOLATION_PATTERN.match(var.value):
                 findings.append(
                     Finding(
                         code="secret-interpolated",

@@ -9,9 +9,13 @@ opinionated GitOps manifests for FluxCD + Kustomize. Where it isn't
 confident, it says so — in the report and in the generated files — instead
 of quietly guessing.
 
-> **Status:** early alpha (v0.2). `analyze` works end-to-end against Docker
-> Compose files today; manifest generation (`generate`) is still a stub —
-> see [`docs/roadmap.md`](docs/roadmap.md).
+> **Status:** early alpha (v0.3). `analyze` and `generate` both work
+> end-to-end against Docker Compose files — see [`docs/roadmap.md`](docs/roadmap.md).
+>
+> This project generates **maintainable GitOps scaffolding, not automatically
+> production-ready Kubernetes deployments**. Readability, determinism,
+> safety, and human review take priority over generating the fewest lines
+> of YAML.
 
 ## Why not just convert Compose to YAML?
 
@@ -77,49 +81,65 @@ pip install gitops-scaffold   # not yet published — see Development below
 
 ```sh
 gitops-scaffold analyze docker-compose.yml
-gitops-scaffold analyze docker-compose.yml --format json
-gitops-scaffold analyze docker-compose.yml --output report.json
-gitops-scaffold generate docker-compose.yml --output ./gitops   # v0.3, still stubbed
+gitops-scaffold analyze docker-compose.yml --format json --output report.json
+
+# generate from a cached report (no re-analysis) ...
+gitops-scaffold generate report.json --app audiobookshelf --namespace apps --output ./gitops
+# ... or directly from Compose (same pipeline, no separate code path)
+gitops-scaffold generate docker-compose.yml --app audiobookshelf --namespace apps --output ./gitops
+
 gitops-scaffold validate ./gitops
+gitops-scaffold validate ./gitops --kubectl   # also runs `kubectl kustomize` if installed
 ```
 
-`analyze` works end-to-end today: `--format table` (default) prints the
-report above; `--format json` prints the same analysis as a stable,
-machine-readable `AnalysisReport` envelope; `--output PATH` additionally
-saves that JSON to disk regardless of `--format` — the schema `generate` is
-expected to accept as cached input once v0.3 lands. Exit codes: `0` if
-analysis completed with only informational/warning findings, `1` if the
-input couldn't be parsed at all, `2` if it completed but found at least one
-CRITICAL finding (a hardcoded secret, `privileged: true`, etc.).
+`analyze`: `--format table` (default) prints the report above; `--format
+json` prints the same analysis as a stable, machine-readable
+`AnalysisReport` envelope; `--output PATH` additionally saves that JSON to
+disk regardless of `--format` — the exact schema `generate` accepts as
+cached input. Exit codes: `0` if analysis completed with only
+informational/warning findings, `1` if the input couldn't be parsed at all,
+`2` if it completed but found at least one CRITICAL finding (a hardcoded
+secret, `privileged: true`, etc.).
 
-`generate` is still a stub for v0.3. `validate` is fully functional today: it
-checks that a generated output directory has the expected files and no
-unresolved review markers.
+`generate` works end-to-end: parses/loads the input, runs every generator,
+and writes a review-ready output directory. Same exit-code convention as
+`analyze`. `--force` allows overwriting files this tool generated on a
+previous run into the same directory — never anything it didn't create (see
+[`docs/generation.md`](docs/generation.md)'s overwrite-safety section).
+
+`validate` checks both structure (expected files present, no unresolved
+review markers) and semantic consistency (Service selectors matching
+Deployment pod labels, `targetPort`s matching named container ports,
+`volumeMounts`/PVC references, `kustomization.yaml` resource existence, no
+leaked redaction markers, valid resource names).
 
 See [`docs/compose-support.md`](docs/compose-support.md) for exactly which
-Compose fields are understood, how ambiguous values are classified, and
-current limitations.
+Compose fields are understood, and [`docs/generation.md`](docs/generation.md)
+for exactly how they map to Kubernetes, including the entrypoint/command
+gotcha, healthcheck→probe translation, and PVC eligibility rules.
 
 ## What gets generated
 
-For each service, `gitops-scaffold generate` produces plain Kubernetes
-manifests laid out for FluxCD's Kustomization controller (`kubectl apply -k`
-also works):
+For a single-service app, `gitops-scaffold generate` produces plain
+Kubernetes manifests laid out for FluxCD's Kustomization controller
+(`kubectl apply -k .` also works) directly under the output directory; a
+multi-service app gets one subdirectory per service instead — see
+[`docs/generation.md`](docs/generation.md) for the full layout rule.
 
 | File | Purpose |
 | --- | --- |
 | `deployment.yaml` | The workload itself |
-| `service.yaml` | Cluster-internal networking |
-| `configmap.yaml` | Non-secret configuration |
-| `pvc.yaml` | Persistent storage, where detected |
+| `service.yaml` | Cluster-internal networking, when the service exposes ports |
+| `configmap.yaml` | Non-secret configuration, when any exists |
+| `pvc.yaml` | Persistent storage, when detected (one or more `---`-separated documents) |
 | `secret.example.yaml` | Placeholder documenting expected secret keys — **never real values** |
-| `ingress.yaml` | External HTTP routing, where applicable |
-| `kustomization.yaml` | Ties every resource above together |
-| `README.md` | What was generated and how to apply it |
-| `VALIDATION_CHECKLIST.md` | Every finding you should resolve before applying |
+| `ingress.yaml` | External HTTP routing, only when explicitly requested via `--ingress-*` flags |
+| `kustomization.yaml` | Ties every applicable resource above together |
+| `README.md` | What was generated, required Secrets, and every review item |
+| `generation-report.json` | Machine-readable summary: assumptions, warnings, skipped resources, confidence |
 
-Helm chart generation is intentionally out of scope for the first release —
-see [`docs/roadmap.md`](docs/roadmap.md) for why, and what's planned instead.
+Helm chart generation is intentionally out of scope — see
+[`docs/roadmap.md`](docs/roadmap.md) for why, and what's planned instead.
 
 ## Architecture
 

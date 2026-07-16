@@ -5,17 +5,19 @@ described in ``docs/architecture.md``:
 
 - ``analyze``:  parse + analyze, print a confidence report. No files written
   unless ``--output`` is given, in which case the full analysis is also
-  saved as JSON — the same schema ``generate`` is expected to accept as
-  cached input in v0.3 (see ``docs/roadmap.md``).
+  saved as JSON — the same schema ``generate`` accepts as cached input.
 - ``generate``: parse + analyze + generate manifests to an output directory.
-  Still stubbed — v0.3.
+  Accepts either a Compose file or a saved ``analyze --output`` report —
+  both converge on the same ``GenerationPipeline`` (see ``generation_io.py``).
 - ``validate``: check a previously generated output directory for structural
-  issues (missing files, unresolved review markers).
+  and semantic issues.
 
-Exit codes for ``analyze``: **1** means the input couldn't be parsed at all
-(bad path, unrecognized format, malformed Compose); **2** means analysis
-completed but found at least one CRITICAL finding; **0** means analysis
-completed with only INFO/WARNING findings (or none).
+Exit codes for both ``analyze`` and ``generate``: **1** means the input
+couldn't be parsed/resolved at all (bad path, unrecognized format, malformed
+Compose, malformed report, bad ``--ingress-*`` combination, or an
+overwrite-safety block); **2** means the run completed but the underlying
+analysis has at least one CRITICAL finding; **0** means it completed with
+only INFO/WARNING findings (or none).
 """
 
 from __future__ import annotations
@@ -29,12 +31,18 @@ from rich.console import Console
 from gitops_scaffold import __version__
 from gitops_scaffold.analyzer.default import DefaultAnalyzer
 from gitops_scaffold.config.settings import ScaffoldSettings
+from gitops_scaffold.generation_io import plan_overwrite, resolve_input, write_generated_files
+from gitops_scaffold.generators.ingress_config import IngressConfig
+from gitops_scaffold.generators.pipeline import GenerationPipeline
+from gitops_scaffold.models.generation_report import GenerationReport
 from gitops_scaffold.models.report import AnalysisReport
 from gitops_scaffold.parsers.base import ParserError
 from gitops_scaffold.parsers.registry import detect_parser
 from gitops_scaffold.reporting.report import Reporter, redact_application
 from gitops_scaffold.utils.fs import write_file
+from gitops_scaffold.utils.kubectl import try_kustomize_build
 from gitops_scaffold.utils.logging import configure_logging
+from gitops_scaffold.validators.manifests import ManifestConsistencyValidator
 from gitops_scaffold.validators.structure import StructureValidator
 
 app = typer.Typer(
@@ -132,26 +140,126 @@ def analyze(
 def generate(
     source: Path = typer.Argument(
         ...,
-        exists=True,
         help=(
-            "Path to an application definition (e.g. docker-compose.yml) or, in a future "
-            "release, a saved analysis report produced by 'analyze --output'."
+            "Path to an application definition (e.g. docker-compose.yml) or a saved "
+            "analysis report produced by 'analyze --output'."
         ),
     ),
-    output: Path = typer.Option(
-        Path("./gitops"),
-        "--output",
-        "-o",
-        help="Directory to write generated manifests to.",
+    app_name: str | None = typer.Option(
+        None, "--app", "-a", help="Override the application name used for labels and README."
     ),
+    namespace: str | None = typer.Option(
+        None, "--namespace", "-n", help="Override the configured default namespace."
+    ),
+    output: Path = typer.Option(
+        Path("./gitops"), "--output", "-o", help="Directory to write generated manifests to."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite files this tool previously generated in --output."
+    ),
+    ingress_host: str | None = typer.Option(
+        None, "--ingress-host", help="Enable Ingress generation for this host."
+    ),
+    ingress_class: str | None = typer.Option(None, "--ingress-class"),
+    tls_secret: str | None = typer.Option(None, "--tls-secret"),
+    cluster_issuer: str | None = typer.Option(None, "--cluster-issuer"),
 ) -> None:
-    """Generate GitOps manifests from an application definition."""
-    console.print(
-        "[yellow]Manifest generation is not yet implemented.[/yellow] "
-        "See docs/roadmap.md for the v0.3 milestone."
+    """Generate GitOps manifests from an application definition or a saved report."""
+    if not source.exists():
+        console.print(f"[red]Error:[/red] {source} does not exist.")
+        raise typer.Exit(code=1)
+
+    settings = ScaffoldSettings.load(source.parent / ".gitops-scaffold.yaml")
+    if namespace is not None:
+        settings = settings.model_copy(update={"default_namespace": namespace})
+
+    try:
+        application, analysis = resolve_input(source, settings)
+    except ParserError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if app_name is not None:
+        application = application.model_copy(update={"name": app_name})
+
+    ingress_flags = (ingress_host, ingress_class, tls_secret, cluster_issuer)
+    ingress_config = None
+    if any(ingress_flags):
+        if not (ingress_host and ingress_class and tls_secret and cluster_issuer):
+            console.print(
+                "[red]Error:[/red] --ingress-host, --ingress-class, --tls-secret, and "
+                "--cluster-issuer must all be given together."
+            )
+            raise typer.Exit(code=1)
+        ingress_config = IngressConfig(
+            host=ingress_host,
+            ingress_class=ingress_class,
+            tls_secret=tls_secret,
+            cluster_issuer=cluster_issuer,
+        )
+
+    outcome = GenerationPipeline(settings, ingress_config).generate(application, analysis)
+
+    this_run_paths = {str(f.relative_path) for f in outcome.files} | {"generation-report.json"}
+    decision = plan_overwrite(output, this_run_paths)
+
+    if decision.foreign:
+        console.print(
+            "[red]Error:[/red] refusing to overwrite files not managed by gitops-scaffold:"
+        )
+        for path in decision.foreign:
+            console.print(f"  {path}")
+        raise typer.Exit(code=1)
+
+    # Report every blocking reason at once (not just the first one found) so
+    # --force's effect is clear from a single run rather than discovered
+    # incrementally across repeated invocations.
+    blocked = False
+    if decision.managed_conflicts and not force:
+        blocked = True
+        console.print("[red]Error:[/red] output already exists (re-run with --force to overwrite):")
+        for path in decision.managed_conflicts:
+            console.print(f"  {path}")
+    if decision.orphaned and not force:
+        blocked = True
+        console.print(
+            "[red]Error:[/red] the previous output here contains files this run no longer "
+            "generates (re-run with --force to proceed — they will not be deleted):"
+        )
+        for path in decision.orphaned:
+            console.print(f"  {path}")
+    if blocked:
+        raise typer.Exit(code=1)
+
+    report = GenerationReport(
+        generator_version=__version__,
+        application_name=application.name,
+        namespace=settings.default_namespace,
+        confidence=analysis.confidence,
+        generated_files=tuple(sorted(this_run_paths)),
+        files_requiring_review=tuple(
+            sorted(str(f.relative_path) for f in outcome.files if f.requires_review)
+        ),
+        notes=outcome.notes,
+        overwritten_files=decision.managed_conflicts,
+        orphaned_files=decision.orphaned if force else (),
+        analysis=analysis,
     )
-    console.print(f"Source provided: [bold]{source}[/bold], output: [bold]{output}[/bold]")
-    raise typer.Exit(code=1)
+
+    write_generated_files(output, outcome.files, report)
+
+    console.print(f"[green]Generated {len(outcome.files)} file(s) in {output}[/green]")
+    if report.files_requiring_review:
+        console.print(
+            f"[yellow]{len(report.files_requiring_review)} file(s) need review[/yellow] — "
+            "see README.md / generation-report.json"
+        )
+    if decision.orphaned:
+        console.print(f"[yellow]{len(decision.orphaned)} orphaned file(s) left in place[/yellow]")
+
+    if analysis.criticals:
+        raise typer.Exit(code=2)
+    raise typer.Exit(code=0)
 
 
 @app.command()
@@ -162,20 +270,36 @@ def validate(
         file_okay=False,
         help="Directory containing previously generated GitOps manifests.",
     ),
+    use_kubectl: bool = typer.Option(
+        False,
+        "--kubectl",
+        help="Also run 'kubectl kustomize' if kubectl is installed (never a hard dependency).",
+    ),
 ) -> None:
-    """Validate a generated GitOps output directory's structure."""
-    validator = StructureValidator()
-    findings = validator.validate(output_dir)
-
-    if not findings:
-        console.print(f"[green]No structural issues found in {output_dir}[/green]")
-        return
+    """Validate a generated GitOps output directory's structure and consistency."""
+    findings = [
+        *StructureValidator().validate(output_dir),
+        *ManifestConsistencyValidator().validate(output_dir),
+    ]
 
     for finding in findings:
         color = "red" if finding.severity.value == "critical" else "yellow"
         console.print(f"[{color}]{finding.severity.value.upper()}[/{color}] {finding.message}")
 
-    raise typer.Exit(code=1)
+    if not findings:
+        console.print(f"[green]No issues found in {output_dir}[/green]")
+
+    if use_kubectl:
+        result = try_kustomize_build(output_dir)
+        if result is None:
+            console.print("[dim]kubectl not found on PATH — skipped.[/dim]")
+        elif result.succeeded:
+            console.print("[green]kubectl kustomize succeeded.[/green]")
+        else:
+            console.print(f"[yellow]kubectl kustomize failed:[/yellow]\n{result.output}")
+
+    if findings:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

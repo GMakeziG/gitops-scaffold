@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.3.0
+
+### Added
+
+- Real manifest generation: `ConfigMapGenerator`, `SecretExampleGenerator`,
+  `DeploymentGenerator`, `ServiceGenerator`, `PersistentVolumeClaimGenerator`,
+  `IngressGenerator` (optional, off by default), `KustomizationGenerator`,
+  and `OutputReadmeGenerator`, orchestrated by `generators/pipeline.py::GenerationPipeline`.
+- `generate` works end-to-end: accepts either a Compose file or a cached
+  `AnalysisReport` JSON (`analyze --output`) — both converge on the same
+  pipeline. `--app`/`--namespace` overrides, `--force`, and
+  `--ingress-host/--ingress-class/--tls-secret/--cluster-issuer`.
+- Overwrite-safety ledger (`generation_io.py`): uses a previous run's own
+  `generation-report.json` to distinguish foreign files (always blocked),
+  managed conflicts (blocked without `--force`), and orphaned files (blocked
+  without `--force`, never deleted with it).
+- `ManifestConsistencyValidator`: semantic cross-checks on top of
+  `StructureValidator` — selectors, targetPorts, volume/PVC references,
+  kustomization resource existence, resource name validity, redaction-marker
+  leaks. Optional `validate --kubectl` (`utils/kubectl.py`), never a hard
+  dependency.
+- Shared, deterministic generation utilities: `utils/naming.py` (kebab-case
+  + collision-safe truncation), `generators/labels.py` (pod
+  labels/selectors), `generators/secret_classification.py` (derives
+  secret/optional status from analysis findings, never re-running
+  `looks_like_secret`), `generators/ports.py`, `generators/volumes.py`
+  (PVC eligibility + shared-named-volume dedup), `generators/healthcheck.py`
+  (Compose healthcheck → probe translation).
+- `docs/generation.md` and `docs/configuration.md`.
+- Golden-file trees (Audiobookshelf, multi-service) plus extensive targeted
+  tests across every generator, the pipeline, overwrite safety, and the
+  validator.
+
+### Changed
+
+- Deliberate v0.2→v0.3 behavior change: bind mounts (not just named
+  volumes) are now converted to PVC scaffolding, excluding host-system
+  paths and known/ambiguous file mounts — see `docs/generation.md`.
+- `StructureValidator.EXPECTED_FILES` shrinks to the 3 always-required
+  files; `secret.example.yaml` is conditional, not hard-required.
+- `ManifestGenerator.generate()` now returns `GenerationOutcome`
+  (`files` + `notes`) instead of a bare file tuple.
+
+### Removed
+
+- `generators/kustomize/checklist.py` (`ValidationChecklistGenerator`) and
+  `templates/VALIDATION_CHECKLIST.md.j2` — the v0.3 output set has no
+  separate checklist file; its job splits between README's "Needs review"
+  section and `generation-report.json`'s notes.
+
 ## v0.2.0
 
 ### Added

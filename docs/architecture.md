@@ -31,7 +31,7 @@ touching the rest of the system.
                        │
                        ▼
                 ┌──────────────┐
-                │  Validators  │──▶ structural + (later) schema checks
+                │  Validators  │──▶ structural + semantic consistency checks
                 └──────────────┘
 ```
 
@@ -97,24 +97,47 @@ generated manifests.
 ## Generators (`gitops_scaffold.generators`)
 
 A `ManifestGenerator` takes an `ApplicationDefinition` + `AnalysisResult` and
-produces zero or more `GeneratedFile`s, usually by rendering a Jinja2 template
-from `gitops_scaffold/templates/`. Each generator owns exactly one resource
-kind (Deployment, Service, ConfigMap, PVC, Secret example, Ingress,
-Kustomization, README, validation checklist) — see
-`gitops_scaffold/generators/kustomize/`.
+returns a `GenerationOutcome` (`files` + `notes`), usually by rendering a
+Jinja2 template from `gitops_scaffold/templates/` via the shared
+`generators/rendering.py::render_template`. Each generator owns exactly one
+resource kind (ConfigMap, Secret example, Deployment, Service, PVC, Ingress,
+Kustomization) — see `gitops_scaffold/generators/kustomize/`.
+`GenerationNote` (`category`: `assumption`/`skipped`/`warning`,
+`requires_review`) is how a generator explains a decision that isn't a file
+by itself — see `docs/generation.md` for the full Compose→Kubernetes mapping
+each one implements.
 
 Two hard rules apply to every generator:
 
 1. **Never generate a real Kubernetes `Secret`.** `secret.example.yaml` is
-   always a placeholder with `CHANGEME` values; real secrets are the
-   operator's responsibility, managed through whatever secret manager
-   (SealedSecrets, External Secrets Operator, SOPS) fits their cluster.
+   always a placeholder with `CHANGE_ME` values, and never reads
+   `EnvVar.value` at all for a secret-classified variable — only its name;
+   real secrets are the operator's responsibility, managed through whatever
+   secret manager (SealedSecrets, External Secrets Operator, SOPS) fits
+   their cluster.
 2. **Never fill in a value the analysis wasn't confident about.** Where
    information is missing, the rendered manifest gets a `TODO` or
-   `REVIEW REQUIRED` comment instead of a plausible-looking default.
+   `REVIEW REQUIRED` comment (and a matching `GenerationNote`) instead of a
+   plausible-looking default.
 
-Helm chart generation is explicitly out of scope for the first release —
-output is plain Kubernetes manifests laid out for FluxCD + Kustomize.
+Several generators independently recompute "would a ConfigMap/Service/PVC
+exist for this service" via the exact same shared, deterministic helpers the
+owning generator itself uses (`kustomize/configmap.py::has_configmap_data`,
+`generators/ports.py::plan_ports`, `generators/volumes.py::plan_volumes`) —
+since these are pure functions of `(app, analysis, settings)`, the same
+inputs every generator receives, there's no way for two generators to
+disagree about whether a given file exists. `OutputReadmeGenerator` is the
+one exception: it needs the *aggregated* notes from every other generator
+(free-form prose, not independently re-derivable), so it deliberately does
+not implement the `ManifestGenerator` interface — see its docstring.
+
+`generators/pipeline.py::GenerationPipeline` is the single place generation
+actually happens: it runs every generator over an application and assembles
+one `GenerationOutcome`, run identically whether the input was a fresh
+Compose parse or a cached `AnalysisReport` (see `cli.py`'s input resolution).
+
+Helm chart generation is explicitly out of scope — output is plain
+Kubernetes manifests laid out for FluxCD + Kustomize.
 
 ## Reporting (`gitops_scaffold.reporting`)
 
@@ -134,28 +157,45 @@ to classify them); only output is ever redacted.
 ## Validators (`gitops_scaffold.validators`)
 
 `StructureValidator` checks that a generated output directory has the
-expected shape (all required files present, no unresolved review markers) —
-this is fully implemented from v0.1 onward, since it only inspects the
-filesystem. Deeper validation (Kubernetes OpenAPI schema checks,
-`kustomize build` / `kubeconform` integration) is a later milestone.
+expected shape (always-required files present, no unresolved review
+markers) — purely filesystem-level, no YAML parsing.
+`ManifestConsistencyValidator` (v0.3) goes deeper: parses every YAML file
+(including multi-document `pvc.yaml`) and cross-references
+Service↔Deployment↔PVC the way a human reviewer would — selectors actually
+matching pod labels, `targetPort` actually matching a named container port,
+`volumeMounts` actually matching declared volumes, `persistentVolumeClaim.claimName`
+actually pointing at a PVC that exists, `kustomization.yaml` resources
+actually existing (files *or* directories) and never including the three
+forbidden files, resource names being valid, and the redaction marker never
+appearing anywhere (see `docs/generation.md`'s Validation section for the
+full list). `validate --kubectl` optionally shells out to
+`kubectl kustomize` (`utils/kubectl.py`) if `kubectl` is on `PATH` — never a
+hard dependency.
 
 ## Configuration (`gitops_scaffold.config`)
 
-`ScaffoldSettings` holds opinionated, overridable defaults (default
-namespace, storage class, image pull policy, ingress class, Flux
-reconciliation interval) that apply across all generated manifests for a
-project, loaded from an optional `.gitops-scaffold.yaml`.
+`ScaffoldSettings` holds opinionated, overridable defaults (namespace,
+Service type, resource request/limit defaults, PVC size/access mode, extra
+labels, liveness-probe opt-in, port overrides, secret name patterns) that
+apply across all generated manifests for a project, loaded from an optional
+`.gitops-scaffold.yaml` — see `docs/configuration.md` for the full field
+table. Ingress configuration is deliberately CLI-flag-only, not part of this
+persisted settings object (see `generators/ingress_config.py`).
 
 ## CLI (`gitops_scaffold.cli`)
 
 A thin Typer layer wiring the stages above to three commands: `analyze`,
 `generate`, and `validate`. The CLI itself contains no business logic — it
 only orchestrates parser → analyzer → reporter/generator → validator calls
-and renders their results.
+and renders their results. `generate`'s heavier logic (input resolution,
+overwrite-safety ledger, staged file writes) lives in `generation_io.py`,
+kept out of `cli.py` for the same reason.
 
-`analyze` exit codes: **1** means the input couldn't be parsed at all (bad
-path, unrecognized format, malformed Compose — a `ParserError`); **2** means
-analysis completed but found at least one CRITICAL finding; **0** means
-analysis completed with only INFO/WARNING findings (or none). `--output PATH`
-writes the full `AnalysisReport` as JSON regardless of `--format` — the same
-schema `generate` is expected to accept as cached input in v0.3.
+Exit codes for both `analyze` and `generate`: **1** means the input couldn't
+be parsed/resolved at all (bad path, unrecognized format, malformed Compose,
+malformed report, a bad `--ingress-*` combination, or an overwrite-safety
+block); **2** means the run completed but the underlying analysis has at
+least one CRITICAL finding; **0** means it completed with only
+INFO/WARNING findings (or none). `analyze --output PATH` writes the full
+`AnalysisReport` as JSON regardless of `--format` — the exact schema
+`generate` accepts as cached input (see `docs/generation.md`).

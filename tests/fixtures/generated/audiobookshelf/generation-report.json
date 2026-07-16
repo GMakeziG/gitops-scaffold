@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "generator_version": "0.1.0",
+  "application_name": "audiobookshelf",
+  "namespace": "apps",
+  "confidence": 0.6499999999999999,
+  "generated_files": [
+    "README.md",
+    "configmap.yaml",
+    "deployment.yaml",
+    "generation-report.json",
+    "kustomization.yaml",
+    "pvc.yaml",
+    "service.yaml"
+  ],
+  "files_requiring_review": [
+    "deployment.yaml",
+    "pvc.yaml"
+  ],
+  "notes": [
+    {
+      "category": "assumption",
+      "message": "Service 'audiobookshelf': runtime user could not be determined; set securityContext explicitly.",
+      "service_name": "audiobookshelf",
+      "requires_review": true
+    },
+    {
+      "category": "assumption",
+      "message": "Service 'audiobookshelf': no health check was detected. Add a readiness/liveness probe manually.",
+      "service_name": "audiobookshelf",
+      "requires_review": true
+    },
+    {
+      "category": "warning",
+      "message": "Service 'audiobookshelf' declared Compose restart policy 'unless-stopped' — this has no direct Deployment equivalent and is not rendered as any field. Deployments always maintain the desired replica count regardless of this setting.",
+      "service_name": "audiobookshelf",
+      "requires_review": false
+    },
+    {
+      "category": "assumption",
+      "message": "Bind mount './audiobooks' -> '/audiobooks' converted to PVC scaffolding 'audiobookshelf-audiobooks' — the data currently lives on the host and must be migrated into the PVC.",
+      "service_name": "audiobookshelf",
+      "requires_review": true
+    },
+    {
+      "category": "assumption",
+      "message": "Bind mount './podcasts' -> '/podcasts' converted to PVC scaffolding 'audiobookshelf-podcasts' — the data currently lives on the host and must be migrated into the PVC.",
+      "service_name": "audiobookshelf",
+      "requires_review": true
+    },
+    {
+      "category": "assumption",
+      "message": "Bind mount './config' -> '/config' converted to PVC scaffolding 'audiobookshelf-config' — the data currently lives on the host and must be migrated into the PVC.",
+      "service_name": "audiobookshelf",
+      "requires_review": true
+    },
+    {
+      "category": "assumption",
+      "message": "Bind mount './metadata' -> '/metadata' converted to PVC scaffolding 'audiobookshelf-metadata' — the data currently lives on the host and must be migrated into the PVC.",
+      "service_name": "audiobookshelf",
+      "requires_review": true
+    }
+  ],
+  "overwritten_files": [],
+  "orphaned_files": [],
+  "analysis": {
+    "application_name": "audiobookshelf-compose",
+    "findings": [
+      {
+        "code": "configmap-value-detected",
+        "message": "Service 'audiobookshelf' config value detected: TZ=America/New_York",
+        "severity": "info",
+        "service_name": "audiobookshelf",
+        "field_path": "environment.TZ",
+        "remediation": null
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './audiobooks' to '/audiobooks' — host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[0]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './podcasts' to '/podcasts' — host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[1]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './config' to '/config' — host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[2]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "volume-bind-mount",
+        "message": "Service 'audiobookshelf' bind-mounts host path './metadata' to '/metadata' — host paths don't translate to Kubernetes.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "volumes[3]",
+        "remediation": "Replace with a named volume/PVC, or an init step that populates the data in-cluster."
+      },
+      {
+        "code": "health-check-missing",
+        "message": "Service 'audiobookshelf' declares no health check.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "healthcheck",
+        "remediation": "Add a healthcheck so readiness/liveness probes can be generated automatically."
+      },
+      {
+        "code": "runtime-user-unspecified",
+        "message": "Service 'audiobookshelf' declares no user — it will run as the image's default user (often root).",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "user",
+        "remediation": "Set an explicit non-root user."
+      },
+      {
+        "code": "image-tag-pinned",
+        "message": "Service 'audiobookshelf' image detected: ghcr.io/advplyr/audiobookshelf:v2.35.1",
+        "severity": "info",
+        "service_name": "audiobookshelf",
+        "field_path": "image",
+        "remediation": null
+      },
+      {
+        "code": "compose-unsupported-field",
+        "message": "Compose field 'services.audiobookshelf.container_name' was read but is not yet modeled by gitops-scaffold.",
+        "severity": "warning",
+        "service_name": "audiobookshelf",
+        "field_path": "services.audiobookshelf.container_name",
+        "remediation": "Review this field manually — it will not influence generated manifests."
+      }
+    ],
+    "confidence": 0.6499999999999999,
+    "detected_ports": true,
+    "detected_volumes": true,
+    "detected_secrets": false,
+    "detected_health_checks": false,
+    "detected_runtime_user": false
+  }
+}

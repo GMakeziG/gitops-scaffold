@@ -43,17 +43,40 @@ real-world usage surfaces gaps the design didn't anticipate.
   ranges, OCI image introspection for UID/tag inference (v0.6), YAML
   line-number provenance.
 
-## v0.3 — Manifest generation
+## v0.3 — Manifest generation (done)
 
-- Implement all nine generators (Deployment, Service, ConfigMap, PVC,
-  secret.example, Ingress, Kustomization, README, validation checklist)
-  against the templates scaffolded in v0.1.
-- `generate` accepts either a Compose file or a previously saved
-  `AnalysisReport` JSON (produced by `analyze --output`, see
-  `models/report.py`) as input, skipping re-parsing in the latter case.
-- `generate` writes a complete, review-ready output directory.
-- Golden-file tests: generated output for a set of example Compose files is
-  checked into `tests/fixtures/` and diffed on every run.
+- [x] All 7 core generators (ConfigMap, Secret example, Deployment, Service,
+      PVC, Ingress, Kustomization) plus `OutputReadmeGenerator` (a deliberate
+      exception to the `ManifestGenerator` interface — see
+      `docs/architecture.md`), orchestrated by `generators/pipeline.py::GenerationPipeline`.
+      The v0.1-scaffolded `ValidationChecklistGenerator` was removed — its job
+      splits between README's "Needs review" section and
+      `generation-report.json`'s notes.
+- [x] `generate` accepts either a Compose file or a previously saved
+      `AnalysisReport` JSON (produced by `analyze --output`) as input —
+      both converge on the same pipeline; see `docs/generation.md`.
+- [x] Deliberate v0.2→v0.3 behavior change: bind mounts (not just named
+      volumes) become PVC scaffolding, excluding host-system paths and
+      known/ambiguous file mounts — see `docs/generation.md`.
+- [x] Entrypoint/command mapping, healthcheck→probe translation
+      (readiness by default, opt-in liveness, startupProbe from
+      start_period), and required-vs-optional `secretKeyRef` handling —
+      all verified against the actual Compose/Kubernetes semantics, not
+      just the common case.
+- [x] Overwrite-safety ledger (`generation_io.py`): foreign files always
+      block, managed conflicts and orphaned files block without `--force`.
+- [x] `ManifestConsistencyValidator`: semantic cross-checks (selectors,
+      targetPorts, volume/PVC references, kustomization resource
+      existence, resource name validity, redaction-marker leaks) on top
+      of `StructureValidator`'s file-presence check. Optional
+      `validate --kubectl` integration, never a hard dependency.
+- [x] Golden-file tests (Audiobookshelf, multi-service) plus extensive
+      targeted assertions (secrets, multi-port, persistent volumes,
+      overwrite/--force, direct-Compose-vs-cached-report parity) across
+      every generator's own test module.
+- Deferred: Helm generation, OpenBao/ExternalSecret generation, Cloudflare
+  Tunnel, live `kubectl apply`, Flux reconciliation, `build:`-context
+  support, port ranges, emptyDir wiring for tmpfs.
 
 ## v0.4 — Deeper analysis
 
