@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from gitops_scaffold.models.analysis import AnalysisResult
 
 
 class GeneratedFile(BaseModel):
@@ -25,15 +24,44 @@ class GeneratedFile(BaseModel):
     requires_review: bool = False
 
 
-class GenerationResult(BaseModel):
-    """Everything produced by generating manifests for one application."""
+class GenerationNoteCategory(StrEnum):
+    """What kind of generation-time observation a :class:`GenerationNote` records."""
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    #: A value was filled in with a confident default or a faithful
+    #: translation choice — not a guess, but worth knowing about.
+    ASSUMPTION = "assumption"
+    #: A resource kind was deliberately not generated for a service (no
+    #: image, no ports, an excluded bind mount, ...).
+    SKIPPED = "skipped"
+    #: Something the operator should be aware of that isn't tied to one
+    #: specific generated value (e.g. Compose's restart policy has no
+    #: Deployment equivalent).
+    WARNING = "warning"
 
-    output_dir: Path
+
+class GenerationNote(BaseModel):
+    """A single human-readable observation from generation.
+
+    ``requires_review=True`` marks an unresolved decision the operator must
+    confirm before applying — this doubles as the "unresolved decisions"
+    category rather than introducing a separate one, since in practice every
+    unresolved decision is also an assumption that needs review.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    category: GenerationNoteCategory
+    message: str
+    service_name: str | None = None
+    requires_review: bool = False
+
+
+class GenerationOutcome(BaseModel):
+    """Everything one :class:`~gitops_scaffold.generators.base.ManifestGenerator`
+    produced for one application: files plus any notes about how it got there.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
     files: tuple[GeneratedFile, ...] = Field(default_factory=tuple)
-    analysis: AnalysisResult
-
-    @property
-    def files_requiring_review(self) -> tuple[GeneratedFile, ...]:
-        return tuple(f for f in self.files if f.requires_review)
+    notes: tuple[GenerationNote, ...] = Field(default_factory=tuple)

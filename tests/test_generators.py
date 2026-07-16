@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from gitops_scaffold.generators.base import ManifestGenerator
-from gitops_scaffold.generators.kustomize.checklist import ValidationChecklistGenerator
 from gitops_scaffold.generators.kustomize.configmap import ConfigMapGenerator
 from gitops_scaffold.generators.kustomize.deployment import DeploymentGenerator
 from gitops_scaffold.generators.kustomize.ingress import IngressGenerator
@@ -14,8 +13,11 @@ from gitops_scaffold.generators.kustomize.secret import SecretExampleGenerator
 from gitops_scaffold.generators.kustomize.service import ServiceGenerator
 from gitops_scaffold.models.analysis import AnalysisResult
 from gitops_scaffold.models.app import ApplicationDefinition
-from gitops_scaffold.models.generation import GeneratedFile
+from gitops_scaffold.models.generation import GenerationOutcome
 
+# Every generator still awaiting its v0.3 implementation (see the roadmap for
+# which Component each is scheduled under). As each is implemented, it moves
+# out of this list and gains its own dedicated test module.
 ALL_GENERATORS: tuple[type[ManifestGenerator], ...] = (
     DeploymentGenerator,
     ServiceGenerator,
@@ -25,7 +27,6 @@ ALL_GENERATORS: tuple[type[ManifestGenerator], ...] = (
     IngressGenerator,
     KustomizationGenerator,
     OutputReadmeGenerator,
-    ValidationChecklistGenerator,
 )
 
 
@@ -42,11 +43,11 @@ def test_concrete_generator_satisfies_the_interface(
 
         def generate(
             self, app: ApplicationDefinition, analysis: AnalysisResult
-        ) -> tuple[GeneratedFile, ...]:
-            return ()
+        ) -> GenerationOutcome:
+            return GenerationOutcome()
 
     analysis = AnalysisResult(application_name=sample_app.name, confidence=1.0)
-    assert EmptyGenerator().generate(sample_app, analysis) == ()
+    assert EmptyGenerator().generate(sample_app, analysis) == GenerationOutcome()
 
 
 @pytest.mark.parametrize("generator_cls", ALL_GENERATORS)

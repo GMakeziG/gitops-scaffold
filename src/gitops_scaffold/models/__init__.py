@@ -22,7 +22,13 @@ from gitops_scaffold.models.app import (
     ServiceDefinition,
     VolumeMount,
 )
-from gitops_scaffold.models.generation import GeneratedFile, GenerationResult
+from gitops_scaffold.models.generation import (
+    GeneratedFile,
+    GenerationNote,
+    GenerationNoteCategory,
+    GenerationOutcome,
+)
+from gitops_scaffold.models.generation_report import GenerationReport
 from gitops_scaffold.models.report import AnalysisReport
 
 __all__ = [
@@ -32,7 +38,10 @@ __all__ = [
     "EnvVar",
     "Finding",
     "GeneratedFile",
-    "GenerationResult",
+    "GenerationNote",
+    "GenerationNoteCategory",
+    "GenerationOutcome",
+    "GenerationReport",
     "HealthCheck",
     "PortMapping",
     "Protocol",
